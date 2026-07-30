@@ -1,0 +1,59 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  nome                String
+  email               String    @unique
+  senha_hash          String
+  role                String    @default("Comum") // Admin | Comum
+  ativo               Boolean   @default(true)
+  criado_em           DateTime  @default(now())
+  reset_token         String?
+  reset_token_expires DateTime?
+}
+
+model Product {
+  id             String     @id @default(uuid())
+  nome           String
+  unidade        String     // kg, L, un, g, ml
+  custo_unitario Float
+  ativo          Boolean    @default(true)
+  criado_em      DateTime   @default(now())
+  entradas       Entrada[]
+  sobras         Sobra[]
+}
+
+model Area {
+  id     String  @id @default(uuid())
+  nome   String  @unique // Cozinha Quente, Pré-Preparo, Buffet, Salão, Estoque
+  sobras Sobra[]
+}
+
+model Entrada {
+  id           String   @id @default(uuid())
+  produto_id   String
+  produto      Product  @relation(fields: [produto_id], references: [id], onDelete: Cascade)
+  quantidade   Float
+  valor_total  Float
+  data_entrada DateTime @default(now())
+  observacao   String?
+}
+
+model Sobra {
+  id          String   @id @default(uuid())
+  produto_id  String
+  produto     Product  @relation(fields: [produto_id], references: [id], onDelete: Cascade)
+  quantidade  Float
+  valor_perda Float
+  area_id     String
+  area        Area     @relation(fields: [area_id], references: [id], onDelete: Cascade)
+  motivo      String?
+  data_sobra  DateTime @default(now())
+}
