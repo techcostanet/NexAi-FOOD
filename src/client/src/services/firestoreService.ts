@@ -35,32 +35,49 @@ function setLocalCache(key: string, data: any) {
   }
 }
 
-// Inicializar banco Firestore na nuvem com dados padrão se estiver totalmente vazio
+// Timeout auxiliar para impedir travamento em chamadas de rede do Firestore
+function withTimeout<T>(promise: Promise<T>, ms: number = 2000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Firestore timeout')), ms);
+    promise.then(
+      (res) => {
+        clearTimeout(timer);
+        resolve(res);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
+// Inicializar banco Firestore em segundo plano se necessário
 export async function seedFirestoreIfEmpty() {
   try {
-    const productsSnap = await getDocs(collection(firestore, PRODUCTS_COL));
+    const productsSnap = await withTimeout(getDocs(collection(firestore, PRODUCTS_COL)), 2500);
     if (productsSnap.empty) {
       console.log('🌱 Inicializando Firestore com produtos, áreas e usuários padrão...');
       for (const prod of initialDataCloud.products) {
-        await setDoc(doc(firestore, PRODUCTS_COL, prod.id), prod);
+        await setDoc(doc(firestore, PRODUCTS_COL, prod.id), prod).catch(() => {});
       }
       for (const area of initialDataCloud.areas) {
-        await setDoc(doc(firestore, AREAS_COL, area.id), area);
+        await setDoc(doc(firestore, AREAS_COL, area.id), area).catch(() => {});
       }
       for (const user of initialDataCloud.users) {
-        await setDoc(doc(firestore, USERS_COL, user.id), user);
+        await setDoc(doc(firestore, USERS_COL, user.id), user).catch(() => {});
       }
     }
   } catch (e) {
-    console.warn('Firestore offline ou não semeado ainda:', e);
+    console.warn('Firestore offline ou regras ativas:', e);
   }
 }
 
 // 1. PRODUTOS
 export async function getFirestoreProducts(): Promise<any[]> {
+  const cached = getLocalCache('products', null);
   try {
-    await seedFirestoreIfEmpty();
-    const snap = await getDocs(collection(firestore, PRODUCTS_COL));
+    const snap = await withTimeout(getDocs(collection(firestore, PRODUCTS_COL)), 2000);
     if (!snap.empty) {
       const products: any[] = [];
       snap.forEach((docSnap) => {
@@ -70,9 +87,9 @@ export async function getFirestoreProducts(): Promise<any[]> {
       return products;
     }
   } catch (e) {
-    console.warn('Usando cache local para produtos:', e);
+    console.warn('Usando cache local/inicial para produtos:', e);
   }
-  return getLocalCache('products', initialDataCloud.products);
+  return cached && Array.isArray(cached) && cached.length > 0 ? cached : initialDataCloud.products;
 }
 
 export async function createFirestoreProduct(productData: any) {
@@ -86,14 +103,12 @@ export async function createFirestoreProduct(productData: any) {
     criado_em: new Date().toISOString(),
   };
 
-  try {
-    await setDoc(doc(firestore, PRODUCTS_COL, newId), prod);
-  } catch (e) {
+  setDoc(doc(firestore, PRODUCTS_COL, newId), prod).catch((e) => {
     console.error('Erro ao salvar produto no Firestore:', e);
-  }
+  });
 
-  const cached = await getFirestoreProducts();
-  const updated = [prod, ...cached.filter((p) => p.id !== newId)];
+  const cached = getLocalCache('products', initialDataCloud.products);
+  const updated = [prod, ...cached.filter((p: any) => p.id !== newId)];
   setLocalCache('products', updated);
   return prod;
 }
@@ -105,15 +120,12 @@ export async function updateFirestoreProduct(id: string, productData: any) {
   if (productData.custo_unitario !== undefined) dataToUpdate.custo_unitario = Number(productData.custo_unitario);
   if (productData.ativo !== undefined) dataToUpdate.ativo = Boolean(productData.ativo);
 
-  try {
-    const ref = doc(firestore, PRODUCTS_COL, id);
-    await updateDoc(ref, dataToUpdate);
-  } catch (e) {
+  updateDoc(doc(firestore, PRODUCTS_COL, id), dataToUpdate).catch((e) => {
     console.error('Erro ao atualizar produto no Firestore:', e);
-  }
+  });
 
-  const cached = await getFirestoreProducts();
-  const idx = cached.findIndex((p) => p.id === id);
+  const cached = getLocalCache('products', initialDataCloud.products);
+  const idx = cached.findIndex((p: any) => p.id === id);
   if (idx !== -1) {
     cached[idx] = { ...cached[idx], ...dataToUpdate };
     setLocalCache('products', cached);
@@ -123,21 +135,21 @@ export async function updateFirestoreProduct(id: string, productData: any) {
 }
 
 export async function deleteFirestoreProduct(id: string) {
-  try {
-    await deleteDoc(doc(firestore, PRODUCTS_COL, id));
-  } catch (e) {
+  deleteDoc(doc(firestore, PRODUCTS_COL, id)).catch((e) => {
     console.error('Erro ao deletar produto do Firestore:', e);
-  }
-  const cached = await getFirestoreProducts();
-  const updated = cached.filter((p) => p.id !== id);
+  });
+  const cached = getLocalCache('products', initialDataCloud.products);
+  const updated = cached.filter((p: any) => p.id !== id);
   setLocalCache('products', updated);
 }
 
 // 2. ENTRADAS
 export async function getFirestoreEntries(): Promise<any[]> {
+  const cached = getLocalCache('entries', []);
   const products = await getFirestoreProducts();
+
   try {
-    const snap = await getDocs(collection(firestore, ENTRIES_COL));
+    const snap = await withTimeout(getDocs(collection(firestore, ENTRIES_COL)), 2000);
     const entries: any[] = [];
     snap.forEach((docSnap) => {
       entries.push({ id: docSnap.id, ...docSnap.data() });
@@ -155,7 +167,7 @@ export async function getFirestoreEntries(): Promise<any[]> {
   } catch (e) {
     console.warn('Usando cache local para entradas:', e);
   }
-  const cached = getLocalCache('entries', []);
+
   return cached.map((e: any) => {
     const prod = products.find((p) => p.id === e.produto_id) || { nome: 'Insumo', unidade: 'un', custo_unitario: 0 };
     return { ...e, produto: prod };
@@ -179,11 +191,9 @@ export async function createFirestoreEntry(entryData: any) {
     criado_em: new Date().toISOString(),
   };
 
-  try {
-    await setDoc(doc(firestore, ENTRIES_COL, newId), entry);
-  } catch (e) {
+  setDoc(doc(firestore, ENTRIES_COL, newId), entry).catch((e) => {
     console.error('Erro ao criar entrada no Firestore:', e);
-  }
+  });
 
   const cached = getLocalCache('entries', []);
   const fullEntry = { ...entry, produto: prod };
@@ -209,12 +219,9 @@ export async function updateFirestoreEntry(id: string, entryData: any) {
     observacao: entryData.observacao !== undefined ? entryData.observacao : existing.observacao,
   };
 
-  try {
-    const ref = doc(firestore, ENTRIES_COL, id);
-    await updateDoc(ref, dataToUpdate);
-  } catch (e) {
+  updateDoc(doc(firestore, ENTRIES_COL, id), dataToUpdate).catch((e) => {
     console.error('Erro ao atualizar entrada no Firestore:', e);
-  }
+  });
 
   const updatedEntry = { id, ...existing, ...dataToUpdate, produto: prod };
   const updatedList = cached.map((e: any) => (e.id === id ? updatedEntry : e));
@@ -223,22 +230,21 @@ export async function updateFirestoreEntry(id: string, entryData: any) {
 }
 
 export async function deleteFirestoreEntry(id: string) {
-  try {
-    await deleteDoc(doc(firestore, ENTRIES_COL, id));
-  } catch (e) {
+  deleteDoc(doc(firestore, ENTRIES_COL, id)).catch((e) => {
     console.error('Erro ao deletar entrada no Firestore:', e);
-  }
+  });
   const cached = getLocalCache('entries', []);
   setLocalCache('entries', cached.filter((e: any) => e.id !== id));
 }
 
 // 3. SOBRAS (WASTE)
 export async function getFirestoreWaste(): Promise<any[]> {
+  const cached = getLocalCache('waste', []);
   const products = await getFirestoreProducts();
   const areas = await getFirestoreAreas();
 
   try {
-    const snap = await getDocs(collection(firestore, WASTE_COL));
+    const snap = await withTimeout(getDocs(collection(firestore, WASTE_COL)), 2000);
     const wasteList: any[] = [];
     snap.forEach((docSnap) => {
       wasteList.push({ id: docSnap.id, ...docSnap.data() });
@@ -258,7 +264,6 @@ export async function getFirestoreWaste(): Promise<any[]> {
     console.warn('Usando cache local para sobras:', e);
   }
 
-  const cached = getLocalCache('waste', []);
   return cached.map((s: any) => {
     const prod = products.find((p) => p.id === s.produto_id) || { nome: 'Insumo', unidade: 'un', custo_unitario: 0 };
     const area = areas.find((a) => a.id === s.area_id) || { nome: 'Cozinha' };
@@ -286,11 +291,9 @@ export async function createFirestoreWaste(wasteData: any) {
     criado_em: new Date().toISOString(),
   };
 
-  try {
-    await setDoc(doc(firestore, WASTE_COL, newId), waste);
-  } catch (e) {
+  setDoc(doc(firestore, WASTE_COL, newId), waste).catch((e) => {
     console.error('Erro ao criar sobra no Firestore:', e);
-  }
+  });
 
   const cached = getLocalCache('waste', []);
   const fullWaste = { ...waste, produto: prod, area: area };
@@ -321,12 +324,9 @@ export async function updateFirestoreWaste(id: string, wasteData: any) {
     data_sobra: wasteData.data_sobra || existing.data_sobra || new Date().toISOString(),
   };
 
-  try {
-    const ref = doc(firestore, WASTE_COL, id);
-    await updateDoc(ref, dataToUpdate);
-  } catch (e) {
+  updateDoc(doc(firestore, WASTE_COL, id), dataToUpdate).catch((e) => {
     console.error('Erro ao atualizar sobra no Firestore:', e);
-  }
+  });
 
   const updatedWaste = { id, ...existing, ...dataToUpdate, produto: prod, area: area };
   const updatedList = cached.map((w: any) => (w.id === id ? updatedWaste : w));
@@ -335,20 +335,18 @@ export async function updateFirestoreWaste(id: string, wasteData: any) {
 }
 
 export async function deleteFirestoreWaste(id: string) {
-  try {
-    await deleteDoc(doc(firestore, WASTE_COL, id));
-  } catch (e) {
+  deleteDoc(doc(firestore, WASTE_COL, id)).catch((e) => {
     console.error('Erro ao deletar sobra no Firestore:', e);
-  }
+  });
   const cached = getLocalCache('waste', []);
   setLocalCache('waste', cached.filter((w: any) => w.id !== id));
 }
 
 // 4. ÁREAS
 export async function getFirestoreAreas(): Promise<any[]> {
+  const cached = getLocalCache('areas', null);
   try {
-    await seedFirestoreIfEmpty();
-    const snap = await getDocs(collection(firestore, AREAS_COL));
+    const snap = await withTimeout(getDocs(collection(firestore, AREAS_COL)), 2000);
     if (!snap.empty) {
       const areas: any[] = [];
       snap.forEach((docSnap) => {
@@ -360,14 +358,14 @@ export async function getFirestoreAreas(): Promise<any[]> {
   } catch (e) {
     console.warn('Usando cache local para áreas:', e);
   }
-  return getLocalCache('areas', initialDataCloud.areas);
+  return cached && Array.isArray(cached) && cached.length > 0 ? cached : initialDataCloud.areas;
 }
 
 // 5. USUÁRIOS
 export async function getFirestoreUsers(): Promise<any[]> {
+  const cached = getLocalCache('users', null);
   try {
-    await seedFirestoreIfEmpty();
-    const snap = await getDocs(collection(firestore, USERS_COL));
+    const snap = await withTimeout(getDocs(collection(firestore, USERS_COL)), 2000);
     if (!snap.empty) {
       const users: any[] = [];
       snap.forEach((docSnap) => {
@@ -379,7 +377,11 @@ export async function getFirestoreUsers(): Promise<any[]> {
   } catch (e) {
     console.warn('Usando cache local para usuários:', e);
   }
-  return getLocalCache('users', initialDataCloud.users);
+
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    return cached;
+  }
+  return initialDataCloud.users;
 }
 
 export async function createFirestoreUser(userData: any) {
@@ -394,14 +396,12 @@ export async function createFirestoreUser(userData: any) {
     criado_em: new Date().toISOString(),
   };
 
-  try {
-    await setDoc(doc(firestore, USERS_COL, newId), newUser);
-  } catch (e) {
+  setDoc(doc(firestore, USERS_COL, newId), newUser).catch((e) => {
     console.error('Erro ao criar usuário no Firestore:', e);
-  }
+  });
 
-  const cached = await getFirestoreUsers();
-  const updated = [newUser, ...cached.filter((u) => u.id !== newId)];
+  const cached = getLocalCache('users', initialDataCloud.users);
+  const updated = [newUser, ...cached.filter((u: any) => u.id !== newId)];
   setLocalCache('users', updated);
   return newUser;
 }
@@ -414,15 +414,12 @@ export async function updateFirestoreUser(id: string, userData: any) {
   if (userData.ativo !== undefined) dataToUpdate.ativo = Boolean(userData.ativo);
   if (userData.senha) dataToUpdate.senha = userData.senha;
 
-  try {
-    const ref = doc(firestore, USERS_COL, id);
-    await updateDoc(ref, dataToUpdate);
-  } catch (e) {
+  updateDoc(doc(firestore, USERS_COL, id), dataToUpdate).catch((e) => {
     console.error('Erro ao atualizar usuário no Firestore:', e);
-  }
+  });
 
-  const cached = await getFirestoreUsers();
-  const idx = cached.findIndex((u) => u.id === id);
+  const cached = getLocalCache('users', initialDataCloud.users);
+  const idx = cached.findIndex((u: any) => u.id === id);
   if (idx !== -1) {
     cached[idx] = { ...cached[idx], ...dataToUpdate };
     setLocalCache('users', cached);
@@ -432,11 +429,9 @@ export async function updateFirestoreUser(id: string, userData: any) {
 }
 
 export async function deleteFirestoreUser(id: string) {
-  try {
-    await deleteDoc(doc(firestore, USERS_COL, id));
-  } catch (e) {
+  deleteDoc(doc(firestore, USERS_COL, id)).catch((e) => {
     console.error('Erro ao deletar usuário do Firestore:', e);
-  }
-  const cached = await getFirestoreUsers();
-  setLocalCache('users', cached.filter((u) => u.id !== id));
+  });
+  const cached = getLocalCache('users', initialDataCloud.users);
+  setLocalCache('users', cached.filter((u: any) => u.id !== id));
 }
