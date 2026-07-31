@@ -9,11 +9,23 @@ export interface VersionItem {
   }[];
 }
 
-export const CURRENT_VERSION = '1.7.2';
+export const CURRENT_VERSION = '1.7.3';
 export const RELEASE_DATE = '31/07/2026';
 export const DEVELOPER_BRAND = 'Tech Costa Systems';
 
 export const VERSIONS_HISTORY: VersionItem[] = [
+  {
+    version: '1.7.3',
+    date: '31/07/2026',
+    title: 'Liberação de Acesso e Configuração de Segurança no Firebase',
+    tag: 'Security',
+    changes: [
+      {
+        category: 'Segurança',
+        description: 'Correção de regras de acesso (Firestore Rules) para garantir leitura e escrita do banco de dados na nuvem pela aplicação principal.',
+      },
+    ],
+  },
   {
     version: '1.7.2',
     date: '31/07/2026',
