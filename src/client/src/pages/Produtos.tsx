@@ -45,6 +45,9 @@ export const Produtos: React.FC = () => {
 
   useEffect(() => {
     fetchProducts();
+    const handleSync = () => fetchProducts();
+    window.addEventListener('firestore:sync', handleSync);
+    return () => window.removeEventListener('firestore:sync', handleSync);
   }, []);
 
   const handleOpenCreateModal = () => {

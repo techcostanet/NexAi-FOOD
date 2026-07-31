@@ -71,6 +71,9 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    const handleSync = () => fetchDashboardData();
+    window.addEventListener('firestore:sync', handleSync);
+    return () => window.removeEventListener('firestore:sync', handleSync);
   }, []);
 
   const handleGenerateAI = async () => {

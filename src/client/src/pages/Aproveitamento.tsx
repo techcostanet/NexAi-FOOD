@@ -71,6 +71,9 @@ export const Aproveitamento: React.FC = () => {
 
   useEffect(() => {
     fetchRawData();
+    const handleSync = () => fetchRawData();
+    window.addEventListener('firestore:sync', handleSync);
+    return () => window.removeEventListener('firestore:sync', handleSync);
   }, []);
 
   // Efeito para recalcular as métricas e gráficos sempre que o filtro de Mês/Ano for alterado

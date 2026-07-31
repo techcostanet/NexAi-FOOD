@@ -88,6 +88,9 @@ export const PrevisaoCompras: React.FC = () => {
 
   useEffect(() => {
     calcularPrevisao();
+    const handleSync = () => calcularPrevisao();
+    window.addEventListener('firestore:sync', handleSync);
+    return () => window.removeEventListener('firestore:sync', handleSync);
   }, [diasPrevisao, margemSeguranca]);
 
   // Filtrar apenas produtos selecionados pelo usuário

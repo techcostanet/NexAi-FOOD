@@ -56,6 +56,9 @@ export const Entradas: React.FC<EntradasProps> = ({ isModalOpen, setIsModalOpen 
 
   useEffect(() => {
     fetchData();
+    const handleSync = () => fetchData();
+    window.addEventListener('firestore:sync', handleSync);
+    return () => window.removeEventListener('firestore:sync', handleSync);
   }, []);
 
   const resetForm = () => {

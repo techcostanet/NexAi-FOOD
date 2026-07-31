@@ -47,6 +47,9 @@ export const Usuarios: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
+    const handleSync = () => fetchUsers();
+    window.addEventListener('firestore:sync', handleSync);
+    return () => window.removeEventListener('firestore:sync', handleSync);
   }, []);
 
   const handleOpenCreateModal = () => {
