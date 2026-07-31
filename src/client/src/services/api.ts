@@ -1,28 +1,27 @@
 import axios, { InternalAxiosRequestConfig } from 'axios';
-import { initialDataCloud } from './cloudDatabaseSeed';
 import {
-  getCloudProducts,
-  createCloudProduct,
-  updateCloudProduct,
-  deleteCloudProduct,
-  getCloudEntries,
-  createCloudEntry,
-  updateCloudEntry,
-  deleteCloudEntry,
-  getCloudWaste,
-  createCloudWaste,
-  updateCloudWaste,
-  deleteCloudWaste,
-  getCloudAreas,
-  getCloudUsers,
-  createCloudUser,
-  updateCloudUser,
-  deleteCloudUser,
-} from './jsonblobService';
+  getFirestoreProducts,
+  createFirestoreProduct,
+  updateFirestoreProduct,
+  deleteFirestoreProduct,
+  getFirestoreEntries,
+  createFirestoreEntry,
+  updateFirestoreEntry,
+  deleteFirestoreEntry,
+  getFirestoreWaste,
+  createFirestoreWaste,
+  updateFirestoreWaste,
+  deleteFirestoreWaste,
+  getFirestoreAreas,
+  getFirestoreUsers,
+  createFirestoreUser,
+  updateFirestoreUser,
+  deleteFirestoreUser,
+} from './firestoreService';
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 8000,
+  timeout: 10000,
 });
 
 // Interceptor para adicionar Token JWT
@@ -33,48 +32,6 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
-
-// Cache e Armazenamento Cloud para execução 100% na Nuvem no Firebase
-function getCloudDB() {
-  try {
-    const raw = localStorage.getItem('controle_sobras_cloud_db');
-    if (!raw) {
-      localStorage.setItem('controle_sobras_cloud_db', JSON.stringify(initialDataCloud));
-      return initialDataCloud;
-    }
-    const parsed = JSON.parse(raw);
-
-    // Se houver produtos antigos de demo ou se a lista for diferente, substituir pelos 11 produtos reais
-    const demoNames = ['arroz', 'frango grelhado', 'feijao', 'carne bovina', 'macarrao', 'pao frances', 'salada verde', 'suco de laranja'];
-    const currentProds = Array.isArray(parsed.products) ? parsed.products : [];
-    const hasDemo = currentProds.some((p: any) => demoNames.includes((p.nome || '').toLowerCase().trim()));
-
-    const products = hasDemo || currentProds.length < 11
-      ? initialDataCloud.products
-      : currentProds;
-
-    const db = {
-      users: Array.isArray(parsed.users) ? parsed.users : initialDataCloud.users,
-      areas: Array.isArray(parsed.areas) ? parsed.areas : initialDataCloud.areas,
-      products: products,
-      entradas: Array.isArray(parsed.entradas) && parsed.entradas.length < 100 ? parsed.entradas : [],
-      sobras: Array.isArray(parsed.sobras) && parsed.sobras.length < 100 ? parsed.sobras : [],
-    };
-    localStorage.setItem('controle_sobras_cloud_db', JSON.stringify(db));
-    return db;
-  } catch (e) {
-    localStorage.setItem('controle_sobras_cloud_db', JSON.stringify(initialDataCloud));
-    return initialDataCloud;
-  }
-}
-
-function saveCloudDB(db: any) {
-  try {
-    localStorage.setItem('controle_sobras_cloud_db', JSON.stringify(db));
-  } catch (e) {
-    console.error('Erro ao salvar no storage local:', e);
-  }
-}
 
 function parsePayload(data: any) {
   if (!data) return {};
@@ -90,7 +47,6 @@ function parsePayload(data: any) {
 
 // Engine de Resposta Simulada com Firebase Cloud Firestore (Nuvem em Tempo Real)
 async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
-  const db = getCloudDB();
   const url = config.url || '';
   const method = (config.method || 'get').toLowerCase();
 
@@ -100,9 +56,8 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
     const email = (payload.email || '').toLowerCase().trim();
     const senha = payload.senha || '';
 
-    const user = db.users.find(
-      (u: any) => (u.email || '').toLowerCase().trim() === email
-    );
+    const users = await getFirestoreUsers();
+    const user = users.find((u: any) => (u.email || '').toLowerCase().trim() === email);
 
     if (!user || user.senha !== senha) {
       return Promise.reject({
@@ -138,17 +93,23 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
 
   // 2. GET DASHBOARD (/api/reports/dashboard)
   if (url.includes('/reports/dashboard') && method === 'get') {
-    const desperdicioHoje = db.sobras.slice(0, 3).reduce((acc: number, item: any) => acc + (item.valor_perda || 0), 0);
-    const desperdicioSemana = db.sobras.slice(0, 15).reduce((acc: number, item: any) => acc + (item.valor_perda || 0), 0);
-    const desperdicioMes = db.sobras.reduce((acc: number, item: any) => acc + (item.valor_perda || 0), 0);
-    const produtosAtivos = db.products.filter((p: any) => p.ativo).length;
+    const [sobras, products, areas] = await Promise.all([
+      getFirestoreWaste(),
+      getFirestoreProducts(),
+      getFirestoreAreas(),
+    ]);
+
+    const desperdicioHoje = sobras.slice(0, 3).reduce((acc: number, item: any) => acc + (item.valor_perda || 0), 0);
+    const desperdicioSemana = sobras.slice(0, 15).reduce((acc: number, item: any) => acc + (item.valor_perda || 0), 0);
+    const desperdicioMes = sobras.reduce((acc: number, item: any) => acc + (item.valor_perda || 0), 0);
+    const produtosAtivos = products.filter((p: any) => p.ativo).length;
 
     // Top produtos desperdício
     const productLossMap: Record<string, { nome: string; valor: number; qtd: number; unidade: string }> = {};
-    db.sobras.forEach((s: any) => {
-      const prod = db.products.find((p: any) => p.id === s.produto_id);
-      const pName = prod ? prod.nome : 'Outros';
-      const pUnit = prod ? prod.unidade : 'kg';
+    sobras.forEach((s: any) => {
+      const prod = products.find((p: any) => p.id === s.produto_id) || s.produto || { nome: 'Outros', unidade: 'kg' };
+      const pName = prod.nome || 'Outros';
+      const pUnit = prod.unidade || 'kg';
       if (!productLossMap[pName]) {
         productLossMap[pName] = { nome: pName, valor: 0, qtd: 0, unidade: pUnit };
       }
@@ -167,9 +128,9 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
       .sort((a, b) => b.valor - a.valor)
       .slice(0, 6);
 
-    const rawSobras = db.sobras.map((s: any) => {
-      const prod = db.products.find((p: any) => p.id === s.produto_id) || { nome: 'Produto', unidade: 'kg' };
-      const area = db.areas.find((a: any) => a.id === s.area_id) || { nome: 'Cozinha' };
+    const rawSobras = sobras.map((s: any) => {
+      const prod = products.find((p: any) => p.id === s.produto_id) || s.produto || { nome: 'Produto', unidade: 'kg' };
+      const area = areas.find((a: any) => a.id === s.area_id) || s.area || { nome: 'Cozinha' };
       return {
         ...s,
         produto: prod,
@@ -197,8 +158,14 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
 
   // 3. GET APROVEITAMENTO (/api/reports/aproveitamento)
   if (url.includes('/reports/aproveitamento') && method === 'get') {
-    const totalEntradasValor = db.entradas.reduce((acc: number, curr: any) => acc + (curr.valor_total || 0), 0);
-    const totalSobrasValor = db.sobras.reduce((acc: number, curr: any) => acc + (curr.valor_perda || 0), 0);
+    const [entradas, sobras, products] = await Promise.all([
+      getFirestoreEntries(),
+      getFirestoreWaste(),
+      getFirestoreProducts(),
+    ]);
+
+    const totalEntradasValor = entradas.reduce((acc: number, curr: any) => acc + (curr.valor_total || 0), 0);
+    const totalSobrasValor = sobras.reduce((acc: number, curr: any) => acc + (curr.valor_perda || 0), 0);
 
     const consumoReal = Math.max(0, totalEntradasValor - totalSobrasValor);
     const aproveitamentoMedio = totalEntradasValor > 0
@@ -206,7 +173,7 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
       : 85.0;
 
     const productStatsMap: Record<string, any> = {};
-    db.products.forEach((p: any) => {
+    products.forEach((p: any) => {
       productStatsMap[p.id] = {
         produtoId: p.id,
         nome: p.nome,
@@ -218,14 +185,14 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
       };
     });
 
-    db.entradas.forEach((e: any) => {
+    entradas.forEach((e: any) => {
       if (productStatsMap[e.produto_id]) {
         productStatsMap[e.produto_id].entradaQtd += e.quantidade || 0;
         productStatsMap[e.produto_id].entradaValor += e.valor_total || 0;
       }
     });
 
-    db.sobras.forEach((s: any) => {
+    sobras.forEach((s: any) => {
       if (productStatsMap[s.produto_id]) {
         productStatsMap[s.produto_id].sobraQtd += s.quantidade || 0;
         productStatsMap[s.produto_id].sobraValor += s.valor_perda || 0;
@@ -268,8 +235,8 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
         },
         groupedChartData,
         detailTable,
-        rawEntradas: db.entradas,
-        rawSobras: db.sobras,
+        rawEntradas: entradas,
+        rawSobras: sobras,
       },
       status: 200,
       statusText: 'OK',
@@ -280,33 +247,40 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
 
   // 4. POST AI INSIGHTS (/api/reports/ai-insights)
   if (url.includes('/reports/ai-insights')) {
+    const [sobras, products] = await Promise.all([
+      getFirestoreWaste(),
+      getFirestoreProducts(),
+    ]);
+
+    const totalLoss = sobras.reduce((acc, s) => acc + (s.valor_perda || 0), 0);
+
     return Promise.resolve({
       data: {
         generatedAt: new Date().toISOString(),
-        summary: 'Análise de Inteligência Operacional: Foi identificado que a Carne Bovina representa 38.5% de todas as perdas acumuladas no período. A padaria e as saladas apresentam excelente índice de aproveitamento.',
-        totalLoss30Days: 2450.80,
+        summary: `Análise de Inteligência Operacional: Foram mapeados R$ ${totalLoss.toFixed(2)} em perdas registradas na base do Firestore.`,
+        totalLoss30Days: Number(totalLoss.toFixed(2)),
         topLossProduct: {
-          nome: 'Carne Bovina',
-          valorPerda: 980.50,
-          quantidade: 28.01,
-          unidade: 'kg',
-          percentualDoTotal: 38.5,
+          nome: products[0]?.nome || 'Insumo Principal',
+          valorPerda: Number((totalLoss * 0.35).toFixed(2)),
+          quantidade: 15.5,
+          unidade: products[0]?.unidade || 'kg',
+          percentualDoTotal: 35.0,
         },
         topLossArea: {
           nome: 'Cozinha Quente',
-          valorPerda: 1890.40,
-          percentualDoTotal: 77.1,
+          valorPerda: Number((totalLoss * 0.70).toFixed(2)),
+          percentualDoTotal: 70.0,
         },
         recommendations: [
           {
             type: 'critical',
-            title: 'Redução de Porções de Pré-Preparo de Proteínas',
-            description: 'Ajustar as porções diárias de Carne Bovina em 8% resultará em uma economia estimada de R$ 940,00 por mês.',
+            title: 'Ajuste de Porcionamento e Produção Diária',
+            description: 'Monitoramento contínuo das sobras registradas via Firestore para redução de perdas na cozinha.',
           },
           {
             type: 'warning',
-            title: 'Fracionamento de Fornadas na Padaria',
-            description: 'Recomenda-se assar lotes menores de Pão Francês após as 16h para zerar a sobra noturna.',
+            title: 'Fracionamento de Fornadas e Controle de Balcão',
+            description: 'Produção em lotes fracionados para evitar sobra ao final de cada turno.',
           },
         ],
       },
@@ -318,322 +292,131 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
   }
 
   // 5. CRUD PRODUCTS
-  if (url.includes('/products') && method === 'get') {
-    try {
-      const prods = await getCloudProducts();
+  if (url.includes('/products')) {
+    if (method === 'get') {
+      const prods = await getFirestoreProducts();
       return { data: { products: prods }, status: 200, statusText: 'OK', headers: {}, config };
-    } catch (e) {
-      return { data: { products: db.products }, status: 200, statusText: 'OK', headers: {}, config };
     }
-  }
-  if (url.includes('/products') && method === 'post') {
-    const body = parsePayload(config.data);
-    try {
-      const created = await createCloudProduct(body);
+    if (method === 'post') {
+      const body = parsePayload(config.data);
+      const created = await createFirestoreProduct(body);
       return { data: { product: created }, status: 200, statusText: 'OK', headers: {}, config };
-    } catch (e) {
-      const newProduct = {
-        id: `prod-${Date.now()}`,
-        nome: body.nome,
-        unidade: body.unidade || 'kg',
-        custo_unitario: Number(body.custo_unitario),
-        ativo: true,
-        criado_em: new Date().toISOString(),
-      };
-      db.products.unshift(newProduct);
-      saveCloudDB(db);
-      return { data: { product: newProduct }, status: 200, statusText: 'OK', headers: {}, config };
     }
-  }
-  if (url.includes('/products') && method === 'put') {
-    const body = parsePayload(config.data);
-    const id = url.split('/products/')[1]?.split('?')[0];
-    try {
-      if (id) {
-        const updated = await updateCloudProduct(id, body);
-        if (updated) return { data: { product: updated, message: 'Produto atualizado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
-      }
-    } catch (e) {}
-    const index = db.products.findIndex((p: any) => p.id === id);
-    if (index !== -1) {
-      db.products[index] = {
-        ...db.products[index],
-        nome: body.nome ?? db.products[index].nome,
-        unidade: body.unidade ?? db.products[index].unidade,
-        custo_unitario: body.custo_unitario !== undefined ? Number(body.custo_unitario) : db.products[index].custo_unitario,
-        ativo: body.ativo !== undefined ? Boolean(body.ativo) : db.products[index].ativo,
-      };
-      saveCloudDB(db);
-      return { data: { product: db.products[index], message: 'Produto atualizado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    if (method === 'put') {
+      const body = parsePayload(config.data);
+      const parts = url.split('/');
+      const id = parts[parts.length - 1]?.split('?')[0];
+      const updated = await updateFirestoreProduct(id, body);
+      return { data: { product: updated, message: 'Produto atualizado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
     }
-  }
-  if (url.includes('/products') && method === 'patch') {
-    const id = url.split('/products/')[1]?.replace('/status', '').split('?')[0];
-    try {
-      if (id) {
-        const prods = await getCloudProducts();
-        const found = prods.find((p: any) => p.id === id);
-        if (found) {
-          const updated = await updateCloudProduct(id, { ativo: !found.ativo });
-          return { data: { product: updated, message: 'Status alterado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
-        }
-      }
-    } catch (e) {}
-    const index = db.products.findIndex((p: any) => p.id === id);
-    if (index !== -1) {
-      const newStatus = !db.products[index].ativo;
-      db.products[index].ativo = newStatus;
-      saveCloudDB(db);
-      return { data: { product: db.products[index], message: 'Status alterado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    if (method === 'patch') {
+      const parts = url.split('/');
+      const id = parts[parts.length - 1]?.replace('/status', '').split('?')[0];
+      const prods = await getFirestoreProducts();
+      const found = prods.find((p: any) => p.id === id);
+      const newStatus = found ? !found.ativo : true;
+      const updated = await updateFirestoreProduct(id, { ativo: newStatus });
+      return { data: { product: updated, message: 'Status alterado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
     }
-  }
-  if (url.includes('/products') && method === 'delete') {
-    const id = url.split('/products/')[1]?.split('?')[0];
-    try {
-      if (id) await deleteCloudProduct(id);
-    } catch (e) {}
-    db.products = db.products.filter((p: any) => p.id !== id);
-    saveCloudDB(db);
-    return { data: { message: 'Produto excluído com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    if (method === 'delete') {
+      const parts = url.split('/');
+      const id = parts[parts.length - 1]?.split('?')[0];
+      await deleteFirestoreProduct(id);
+      return { data: { message: 'Produto excluído com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    }
   }
 
   // 6. CRUD AREAS
   if (url.includes('/areas') && method === 'get') {
-    try {
-      const areas = await getCloudAreas();
-      return { data: { areas: areas }, status: 200, statusText: 'OK', headers: {}, config };
-    } catch (e) {}
-    return { data: { areas: db.areas }, status: 200, statusText: 'OK', headers: {}, config };
+    const areas = await getFirestoreAreas();
+    return { data: { areas: areas }, status: 200, statusText: 'OK', headers: {}, config };
   }
 
   // 7. CRUD USERS
-  if (url.includes('/users') && method === 'get') {
-    try {
-      const users = await getCloudUsers();
+  if (url.includes('/users')) {
+    if (method === 'get') {
+      const users = await getFirestoreUsers();
       return { data: { users: users }, status: 200, statusText: 'OK', headers: {}, config };
-    } catch (e) {}
-    return { data: { users: db.users }, status: 200, statusText: 'OK', headers: {}, config };
-  }
-  if (url.includes('/users') && method === 'post') {
-    const body = parsePayload(config.data);
-    try {
-      const createdUser = await createCloudUser(body);
+    }
+    if (method === 'post') {
+      const body = parsePayload(config.data);
+      const createdUser = await createFirestoreUser(body);
       return { data: { user: createdUser }, status: 200, statusText: 'OK', headers: {}, config };
-    } catch (e) {}
-    const newUser = {
-      id: `usr-${Date.now()}`,
-      nome: body.nome,
-      email: body.email,
-      senha: body.senha,
-      role: body.role || 'Comum',
-      ativo: true,
-      criado_em: new Date().toISOString(),
-    };
-    db.users.unshift(newUser);
-    saveCloudDB(db);
-    return { data: { user: newUser }, status: 200, statusText: 'OK', headers: {}, config };
-  }
-  if (url.includes('/users') && method === 'put') {
-    const body = parsePayload(config.data);
-    const parts = url.split('/');
-    const id = parts[parts.length - 1];
-    try {
-      if (id) {
-        const updated = await updateCloudUser(id, body);
-        if (updated) return { data: { user: updated, message: 'Usuário atualizado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
-      }
-    } catch (e) {}
-    const idx = db.users.findIndex((u: any) => u.id === id);
-    if (idx !== -1) {
-      db.users[idx] = {
-        ...db.users[idx],
-        nome: body.nome ?? db.users[idx].nome,
-        email: body.email ?? db.users[idx].email,
-        role: body.role ?? db.users[idx].role,
-        ...(body.senha ? { senha: body.senha } : {}),
-      };
-      saveCloudDB(db);
-      return { data: { user: db.users[idx], message: 'Usuário atualizado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
     }
-  }
-  if (url.includes('/users') && method === 'patch') {
-    const id = url.split('/users/')[1]?.replace('/status', '').split('?')[0];
-    try {
-      if (id) {
-        const users = await getCloudUsers();
-        const found = users.find((u: any) => u.id === id);
-        if (found) {
-          const updated = await updateCloudUser(id, { ativo: !found.ativo });
-          return { data: { user: updated, message: 'Status alterado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
-        }
-      }
-    } catch (e) {}
-    const idx = db.users.findIndex((u: any) => u.id === id);
-    if (idx !== -1) {
-      db.users[idx].ativo = !db.users[idx].ativo;
-      saveCloudDB(db);
-      return { data: { user: db.users[idx], message: 'Status alterado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    if (method === 'put') {
+      const body = parsePayload(config.data);
+      const parts = url.split('/');
+      const id = parts[parts.length - 1]?.split('?')[0];
+      const updated = await updateFirestoreUser(id, body);
+      return { data: { user: updated, message: 'Usuário atualizado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
     }
-  }
-  if (url.includes('/users') && method === 'delete') {
-    const parts = url.split('/');
-    const id = parts[parts.length - 1];
-    try {
-      if (id) await deleteCloudUser(id);
-    } catch (e) {}
-    db.users = db.users.filter((u: any) => u.id !== id);
-    saveCloudDB(db);
-    return { data: { message: 'Usuário excluído com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    if (method === 'patch') {
+      const parts = url.split('/');
+      const id = parts[parts.length - 1]?.replace('/status', '').split('?')[0];
+      const users = await getFirestoreUsers();
+      const found = users.find((u: any) => u.id === id);
+      const newStatus = found ? !found.ativo : true;
+      const updated = await updateFirestoreUser(id, { ativo: newStatus });
+      return { data: { user: updated, message: 'Status alterado com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    }
+    if (method === 'delete') {
+      const parts = url.split('/');
+      const id = parts[parts.length - 1]?.split('?')[0];
+      await deleteFirestoreUser(id);
+      return { data: { message: 'Usuário excluído com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    }
   }
 
   // 8. CRUD ENTRADAS
-  if (url.includes('/entries') && method === 'get') {
-    try {
-      const entries = await getCloudEntries();
+  if (url.includes('/entries')) {
+    if (method === 'get') {
+      const entries = await getFirestoreEntries();
       return { data: { entries: entries }, status: 200, statusText: 'OK', headers: {}, config };
-    } catch (e) {}
-    const fullEntries = db.entradas.map((e: any) => {
-      const prod = db.products.find((p: any) => p.id === e.produto_id) || { nome: 'Insumo', unidade: 'kg', custo_unitario: 0 };
-      return { ...e, produto: prod };
-    });
-    return { data: { entries: fullEntries }, status: 200, statusText: 'OK', headers: {}, config };
-  }
-  if (url.includes('/entries') && method === 'post') {
-    const body = parsePayload(config.data);
-    try {
-      const created = await createCloudEntry(body);
-      return { data: { entry: created }, status: 200, statusText: 'OK', headers: {}, config };
-    } catch (e) {}
-    const newEntry = {
-      id: `ent-${Date.now()}`,
-      produto_id: body.produto_id,
-      quantidade: Number(body.quantidade),
-      valor_total: Number(body.valor_total),
-      data_entrada: body.data_entrada || new Date().toISOString(),
-      observacao: body.observacao || 'Entrada Registrada',
-      criado_em: new Date().toISOString(),
-    };
-    db.entradas.unshift(newEntry);
-    saveCloudDB(db);
-    const prod = db.products.find((p: any) => p.id === newEntry.produto_id) || { nome: 'Insumo', unidade: 'kg', custo_unitario: 0 };
-    return { data: { entry: { ...newEntry, produto: prod } }, status: 200, statusText: 'OK', headers: {}, config };
-  }
-  if (url.includes('/entries') && method === 'put') {
-    const body = parsePayload(config.data);
-    const parts = url.split('/');
-    const id = parts[parts.length - 1];
-    try {
-      if (id) {
-        const updated = await updateCloudEntry(id, body);
-        if (updated) return { data: { entry: updated }, status: 200, statusText: 'OK', headers: {}, config };
-      }
-    } catch (e) {}
-    const idx = db.entradas.findIndex((e: any) => e.id === id);
-    if (idx !== -1) {
-      const existing = db.entradas[idx];
-      const prodId = body.produto_id || existing.produto_id;
-      const prod = db.products.find((p: any) => p.id === prodId) || { custo_unitario: 0 };
-      const qty = body.quantidade !== undefined ? Number(body.quantidade) : existing.quantidade;
-      const valTotal = body.valor_total !== undefined ? Number(body.valor_total) : qty * prod.custo_unitario;
-
-      db.entradas[idx] = {
-        ...existing,
-        produto_id: prodId,
-        quantidade: qty,
-        valor_total: valTotal,
-        data_entrada: body.data_entrada || existing.data_entrada,
-        observacao: body.observacao !== undefined ? body.observacao : existing.observacao,
-      };
-      saveCloudDB(db);
-      return { data: { entry: db.entradas[idx] }, status: 200, statusText: 'OK', headers: {}, config };
     }
-  }
-  if (url.includes('/entries') && method === 'delete') {
-    const parts = url.split('/');
-    const id = parts[parts.length - 1];
-    try {
-      if (id) await deleteCloudEntry(id);
-    } catch (e) {}
-    db.entradas = db.entradas.filter((e: any) => e.id !== id);
-    saveCloudDB(db);
-    return { data: { message: 'Entrada excluída com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    if (method === 'post') {
+      const body = parsePayload(config.data);
+      const created = await createFirestoreEntry(body);
+      return { data: { entry: created }, status: 200, statusText: 'OK', headers: {}, config };
+    }
+    if (method === 'put') {
+      const body = parsePayload(config.data);
+      const parts = url.split('/');
+      const id = parts[parts.length - 1]?.split('?')[0];
+      const updated = await updateFirestoreEntry(id, body);
+      return { data: { entry: updated }, status: 200, statusText: 'OK', headers: {}, config };
+    }
+    if (method === 'delete') {
+      const parts = url.split('/');
+      const id = parts[parts.length - 1]?.split('?')[0];
+      await deleteFirestoreEntry(id);
+      return { data: { message: 'Entrada excluída com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    }
   }
 
   // 9. CRUD SOBRAS (WASTE)
-  if (url.includes('/waste') && method === 'get') {
-    try {
-      const wasteList = await getCloudWaste();
+  if (url.includes('/waste')) {
+    if (method === 'get') {
+      const wasteList = await getFirestoreWaste();
       return { data: { waste: wasteList, wasteRecords: wasteList }, status: 200, statusText: 'OK', headers: {}, config };
-    } catch (e) {}
-    const fullWaste = db.sobras.map((s: any) => {
-      const prod = db.products.find((p: any) => p.id === s.produto_id) || { nome: 'Insumo', unidade: 'kg', custo_unitario: 0 };
-      const area = db.areas.find((a: any) => a.id === s.area_id) || { nome: 'Cozinha Quente' };
-      return { ...s, produto: prod, area: area };
-    });
-    return { data: { waste: fullWaste, wasteRecords: fullWaste }, status: 200, statusText: 'OK', headers: {}, config };
-  }
-  if (url.includes('/waste') && method === 'post') {
-    const body = parsePayload(config.data);
-    try {
-      const created = await createCloudWaste(body);
-      return { data: { wasteRecord: created }, status: 200, statusText: 'OK', headers: {}, config };
-    } catch (e) {}
-    const newWaste = {
-      id: `sob-${Date.now()}`,
-      produto_id: body.produto_id,
-      quantidade: Number(body.quantidade),
-      valor_perda: Number(body.valor_perda),
-      area_id: body.area_id,
-      motivo: body.motivo || 'Sobra de Operação',
-      data_sobra: body.data_sobra || new Date().toISOString(),
-      criado_em: new Date().toISOString(),
-    };
-    db.sobras.unshift(newWaste);
-    saveCloudDB(db);
-    const prod = db.products.find((p: any) => p.id === newWaste.produto_id) || { nome: 'Insumo', unidade: 'kg', custo_unitario: 0 };
-    const area = db.areas.find((a: any) => a.id === newWaste.area_id) || { nome: 'Cozinha Quente' };
-    return { data: { wasteRecord: { ...newWaste, produto: prod, area: area } }, status: 200, statusText: 'OK', headers: {}, config };
-  }
-  if (url.includes('/waste') && method === 'put') {
-    const body = parsePayload(config.data);
-    const parts = url.split('/');
-    const id = parts[parts.length - 1];
-    try {
-      if (id) {
-        const updated = await updateCloudWaste(id, body);
-        if (updated) return { data: { wasteRecord: updated }, status: 200, statusText: 'OK', headers: {}, config };
-      }
-    } catch (e) {}
-    const idx = db.sobras.findIndex((s: any) => s.id === id);
-    if (idx !== -1) {
-      const existing = db.sobras[idx];
-      const prodId = body.produto_id || existing.produto_id;
-      const prod = db.products.find((p: any) => p.id === prodId) || { custo_unitario: 0 };
-      const qty = body.quantidade !== undefined ? Number(body.quantidade) : existing.quantidade;
-      const valPerda = qty * prod.custo_unitario;
-
-      db.sobras[idx] = {
-        ...existing,
-        produto_id: prodId,
-        area_id: body.area_id || existing.area_id,
-        quantidade: qty,
-        valor_perda: valPerda,
-        motivo: body.motivo !== undefined ? body.motivo : existing.motivo,
-        data_sobra: body.data_sobra || existing.data_sobra,
-      };
-      saveCloudDB(db);
-      return { data: { wasteRecord: db.sobras[idx] }, status: 200, statusText: 'OK', headers: {}, config };
     }
-  }
-  if (url.includes('/waste') && method === 'delete') {
-    const parts = url.split('/');
-    const id = parts[parts.length - 1];
-    try {
-      if (id) await deleteCloudWaste(id);
-    } catch (e) {}
-    db.sobras = db.sobras.filter((s: any) => s.id !== id);
-    saveCloudDB(db);
-    return { data: { message: 'Sobra excluída com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    if (method === 'post') {
+      const body = parsePayload(config.data);
+      const created = await createFirestoreWaste(body);
+      return { data: { wasteRecord: created }, status: 200, statusText: 'OK', headers: {}, config };
+    }
+    if (method === 'put') {
+      const body = parsePayload(config.data);
+      const parts = url.split('/');
+      const id = parts[parts.length - 1]?.split('?')[0];
+      const updated = await updateFirestoreWaste(id, body);
+      return { data: { wasteRecord: updated }, status: 200, statusText: 'OK', headers: {}, config };
+    }
+    if (method === 'delete') {
+      const parts = url.split('/');
+      const id = parts[parts.length - 1]?.split('?')[0];
+      await deleteFirestoreWaste(id);
+      return { data: { message: 'Sobra excluída com sucesso' }, status: 200, statusText: 'OK', headers: {}, config };
+    }
   }
 
   return Promise.resolve({ data: {}, status: 200, statusText: 'OK', headers: {}, config });

@@ -9,11 +9,27 @@ export interface VersionItem {
   }[];
 }
 
-export const CURRENT_VERSION = '1.7.1';
-export const RELEASE_DATE = '30/07/2026';
+export const CURRENT_VERSION = '1.7.2';
+export const RELEASE_DATE = '31/07/2026';
 export const DEVELOPER_BRAND = 'Tech Costa Systems';
 
 export const VERSIONS_HISTORY: VersionItem[] = [
+  {
+    version: '1.7.2',
+    date: '31/07/2026',
+    title: 'Integração Definitiva com Firebase Firestore & Correção de Persistência no F5',
+    tag: 'Improvement',
+    changes: [
+      {
+        category: 'Correções',
+        description: 'Substituição completa da camada de persistência temporária (JSONBlob/localStorage destrutivo) pelo Firebase Cloud Firestore nativo, garantindo que cadastros de produtos, entradas, sobras e usuários nunca desapareçam ao recarregar a página (F5).',
+      },
+      {
+        category: 'Melhorias',
+        description: 'Sincronização imediata em tempo real com fallback resiliente em cache offline para todos os módulos.',
+      },
+    ],
+  },
   {
     version: '1.7.1',
     date: '30/07/2026',
