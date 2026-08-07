@@ -9,11 +9,23 @@ export interface VersionItem {
   }[];
 }
 
-export const CURRENT_VERSION = '1.7.4';
+export const CURRENT_VERSION = '1.7.5';
 export const RELEASE_DATE = '07/08/2026';
 export const DEVELOPER_BRAND = 'Tech Costa Systems';
 
 export const VERSIONS_HISTORY: VersionItem[] = [
+  {
+    version: '1.7.5',
+    date: '07/08/2026',
+    title: 'Sincronização Exata de Datas nos Modais de Edição e Tabela de Registros',
+    tag: 'Improvement',
+    changes: [
+      {
+        category: 'Correções',
+        description: 'Unificação do motor de parsing de datas para garantir que a data exibida na tabela de entradas/sobras seja exatamente idêntica à data pré-preenchida no modal de edição, eliminando o avanço indevido de 1 dia.',
+      },
+    ],
+  },
   {
     version: '1.7.4',
     date: '07/08/2026',

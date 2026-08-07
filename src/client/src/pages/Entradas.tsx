@@ -32,7 +32,7 @@ export const Entradas: React.FC<EntradasProps> = ({ isModalOpen, setIsModalOpen 
   const [selectedProductId, setSelectedProductId] = useState('');
   const [quantidade, setQuantidade] = useState('');
   const [valorTotal, setValorTotal] = useState('');
-  const [dataEntrada, setDataEntrada] = useState(new Date().toISOString().split('T')[0]);
+  const [dataEntrada, setDataEntrada] = useState(formatDateInput(new Date()));
   const [observacao, setObservacao] = useState('');
 
   const [submitting, setSubmitting] = useState(false);

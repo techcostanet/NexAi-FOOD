@@ -34,7 +34,7 @@ export const RegistrosSobras: React.FC<RegistrosSobrasProps> = ({
   const [quantidade, setQuantidade] = useState('');
   const [valorPerdaEstimado, setValorPerdaEstimado] = useState(0);
   const [motivo, setMotivo] = useState('');
-  const [dataSobra, setDataSobra] = useState(new Date().toISOString().split('T')[0]);
+  const [dataSobra, setDataSobra] = useState(formatDateInput(new Date()));
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
