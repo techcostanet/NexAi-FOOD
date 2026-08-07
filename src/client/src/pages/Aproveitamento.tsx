@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import api from '../services/api';
 import { StatCard } from '../components/StatCard';
+import { parseLocalDate } from '../utils/dateUtils';
 
 export const Aproveitamento: React.FC = () => {
   // Filtros de Período Pré-prontos
@@ -82,7 +83,7 @@ export const Aproveitamento: React.FC = () => {
 
     // Filtrar entradas e sobras pelo mês e ano selecionados
     const filteredEntradas = allEntradas.filter((e) => {
-      const d = new Date(e.data_entrada);
+      const d = parseLocalDate(e.data_entrada);
       const mStr = (d.getMonth() + 1).toString().padStart(2, '0');
       const yStr = d.getFullYear().toString();
 
@@ -92,7 +93,7 @@ export const Aproveitamento: React.FC = () => {
     });
 
     const filteredSobras = allSobras.filter((s) => {
-      const d = new Date(s.data_sobra);
+      const d = parseLocalDate(s.data_sobra);
       const mStr = (d.getMonth() + 1).toString().padStart(2, '0');
       const yStr = d.getFullYear().toString();
 

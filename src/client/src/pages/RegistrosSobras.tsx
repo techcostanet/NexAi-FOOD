@@ -10,6 +10,7 @@ import {
 import api from '../services/api';
 import { Sobra, Product, Area } from '../types';
 import { Modal } from '../components/Modal';
+import { formatDateBR, formatDateInput } from '../utils/dateUtils';
 
 interface RegistrosSobrasProps {
   isModalOpen: boolean;
@@ -73,7 +74,7 @@ export const RegistrosSobras: React.FC<RegistrosSobrasProps> = ({
     setQuantidade('');
     setValorPerdaEstimado(0);
     setMotivo('');
-    setDataSobra(new Date().toISOString().split('T')[0]);
+    setDataSobra(formatDateInput(new Date()));
     setError(null);
   };
 
@@ -89,8 +90,7 @@ export const RegistrosSobras: React.FC<RegistrosSobrasProps> = ({
     setQuantidade(String(waste.quantidade));
     setValorPerdaEstimado(waste.valor_perda || 0);
     setMotivo(waste.motivo || '');
-    const dateFormatted = waste.data_sobra ? waste.data_sobra.split('T')[0] : new Date().toISOString().split('T')[0];
-    setDataSobra(dateFormatted);
+    setDataSobra(formatDateInput(waste.data_sobra));
     setError(null);
     setIsModalOpen(true);
   };
@@ -252,7 +252,7 @@ export const RegistrosSobras: React.FC<RegistrosSobrasProps> = ({
                 filteredWaste.map((w) => (
                   <tr key={w.id} className="hover:bg-stone-50/70 transition-colors">
                     <td className="py-3.5 px-6 font-semibold text-stone-600">
-                      {new Date(w.data_sobra).toLocaleDateString('pt-BR')}
+                      {formatDateBR(w.data_sobra)}
                     </td>
 
                     <td className="py-3.5 px-4 font-bold text-stone-900 flex items-center gap-2">

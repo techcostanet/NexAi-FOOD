@@ -14,6 +14,7 @@ import {
 import api from '../services/api';
 import { Entrada, Product } from '../types';
 import { Modal } from '../components/Modal';
+import { formatDateBR, formatDateInput } from '../utils/dateUtils';
 
 interface EntradasProps {
   isModalOpen: boolean;
@@ -66,7 +67,7 @@ export const Entradas: React.FC<EntradasProps> = ({ isModalOpen, setIsModalOpen 
     setSelectedProductId('');
     setQuantidade('');
     setValorTotal('');
-    setDataEntrada(new Date().toISOString().split('T')[0]);
+    setDataEntrada(formatDateInput(new Date()));
     setObservacao('');
     setError(null);
   };
@@ -81,8 +82,7 @@ export const Entradas: React.FC<EntradasProps> = ({ isModalOpen, setIsModalOpen 
     setSelectedProductId(entry.produto_id);
     setQuantidade(String(entry.quantidade));
     setValorTotal(entry.valor_total ? String(entry.valor_total.toFixed(2)) : '');
-    const dateFormatted = entry.data_entrada ? entry.data_entrada.split('T')[0] : new Date().toISOString().split('T')[0];
-    setDataEntrada(dateFormatted);
+    setDataEntrada(formatDateInput(entry.data_entrada));
     setObservacao(entry.observacao || '');
     setError(null);
     setIsModalOpen(true);
@@ -239,7 +239,7 @@ export const Entradas: React.FC<EntradasProps> = ({ isModalOpen, setIsModalOpen 
                 filteredEntries.map((e) => (
                   <tr key={e.id} className="hover:bg-stone-50/70 transition-colors">
                     <td className="py-3.5 px-6 font-semibold text-stone-600">
-                      {new Date(e.data_entrada).toLocaleDateString('pt-BR')}
+                      {formatDateBR(e.data_entrada)}
                     </td>
 
                     <td className="py-3.5 px-4 font-bold text-stone-900 flex items-center gap-2">

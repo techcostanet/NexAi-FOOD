@@ -9,11 +9,23 @@ export interface VersionItem {
   }[];
 }
 
-export const CURRENT_VERSION = '1.7.3';
-export const RELEASE_DATE = '31/07/2026';
+export const CURRENT_VERSION = '1.7.4';
+export const RELEASE_DATE = '07/08/2026';
 export const DEVELOPER_BRAND = 'Tech Costa Systems';
 
 export const VERSIONS_HISTORY: VersionItem[] = [
+  {
+    version: '1.7.4',
+    date: '07/08/2026',
+    title: 'Correção de Fuso Horário nas Datas de Entrada e Atualização de Registros',
+    tag: 'Improvement',
+    changes: [
+      {
+        category: 'Correções',
+        description: 'Correção no tratamento e exibição de datas para evitar retrocesso de 1 dia por fuso horário (GMT-3) e avanço de 1 dia em todas as entradas no Firestore.',
+      },
+    ],
+  },
   {
     version: '1.7.3',
     date: '31/07/2026',
