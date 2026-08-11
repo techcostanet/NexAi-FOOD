@@ -12,3 +12,6 @@ Toda alteração de código ou deploy neste projeto deve seguir rigorosamente as
 
 3. **Sincronização com GitHub:**
    - A cada deploy ou alteração concluída, o código deve obrigatoriamente ser commitado e enviado (*push*) para o repositório no GitHub (`origin main`).
+
+4. **Deploy Automático no Firebase:**
+   - Após aprovação e conclusão das alterações de código, deve-se gerar o build do frontend (comando: `cmd.exe /c "npm run build:client"`) e realizar o deploy imediatamente no Firebase (comando: `cmd.exe /c "firebase deploy"`) para garantir que as melhorias estejam online.
