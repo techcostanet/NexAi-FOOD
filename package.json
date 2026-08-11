@@ -1,6 +1,6 @@
 {
   "name": "controle-de-sobras",
-  "version": "1.7.6",
+  "version": "1.7.7",
   "private": true,
   "description": "SaaS de Gestão de Estoque, Entradas, Desperdício e Aproveitamento para Restaurantes",
   "main": "dist/server/index.js",

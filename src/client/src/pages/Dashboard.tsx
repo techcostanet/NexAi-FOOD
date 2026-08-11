@@ -1,17 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   TrendingDown,
   Calendar,
   AlertTriangle,
   PackageCheck,
-  Sparkles,
-  RefreshCw,
-  Info,
-  ChevronRight,
   BarChart2,
   LineChart as LineChartIcon,
   AreaChart as AreaChartIcon,
   PieChart as PieChartIcon,
+  Filter,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -30,38 +27,45 @@ import {
 } from 'recharts';
 import api from '../services/api';
 import { StatCard } from '../components/StatCard';
-import { DashboardStats, TopProductDonut, AIInsightData } from '../types';
+import { TopProductDonut } from '../types';
+import { parseLocalDate } from '../utils/dateUtils';
 
 export const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<DashboardStats>({
-    desperdicioHoje: 0,
-    desperdicioSemana: 0,
-    desperdicioMes: 0,
-    produtosAtivos: 0,
-  });
-  const [topProducts, setTopProducts] = useState<TopProductDonut[]>([]);
+  const now = new Date();
+  const currentMonthStr = (now.getMonth() + 1).toString().padStart(2, '0');
+  const currentYearStr = now.getFullYear().toString();
+
+  // Filtro de Mês e Ano para a Dashboard
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthStr);
+  const [selectedYear, setSelectedYear] = useState<string>(currentYearStr);
+
   const [rawSobras, setRawSobras] = useState<any[]>([]);
+  const [produtosAtivosCount, setProdutosAtivosCount] = useState<number>(0);
+  const [productsList, setProductsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filtros do Gráfico 1: Histórico de Sobras
   const [metric, setMetric] = useState<'valor' | 'quantidade'>('valor');
   const [period, setPeriod] = useState<'dia' | 'semana'>('dia');
-  const [chartTypeMain, setChartTypeMain] = useState<'bar' | 'line' | 'area'>('bar'); // 3 Opções de Gráfico 1
+  const [chartTypeMain, setChartTypeMain] = useState<'bar' | 'line' | 'area'>('bar');
 
   // Filtros do Gráfico 2: Top Produtos
-  const [chartTypeTop, setChartTypeTop] = useState<'donut' | 'pie' | 'bar'>('donut'); // 3 Opções de Gráfico 2
-
-  // Estado dos Insights da IA
-  const [aiData, setAiData] = useState<AIInsightData | null>(null);
-  const [generatingAi, setGeneratingAi] = useState(false);
+  const [chartTypeTop, setChartTypeTop] = useState<'donut' | 'pie' | 'bar'>('donut');
 
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/reports/dashboard');
-      setStats(res.data.stats);
-      setTopProducts(res.data.topProductsDonut || []);
-      setRawSobras(res.data.rawSobras || []);
+      const [resDash, resProds] = await Promise.all([
+        api.get('/reports/dashboard'),
+        api.get('/products'),
+      ]);
+
+      const sobras = resDash.data.rawSobras || [];
+      const prods = resProds.data.products || [];
+
+      setRawSobras(sobras);
+      setProductsList(prods);
+      setProdutosAtivosCount(prods.filter((p: any) => p.ativo).length);
     } catch (err) {
       console.error('Erro ao carregar dashboard:', err);
     } finally {
@@ -76,32 +80,91 @@ export const Dashboard: React.FC = () => {
     return () => window.removeEventListener('firestore:sync', handleSync);
   }, []);
 
-  const handleGenerateAI = async () => {
-    setGeneratingAi(true);
-    try {
-      const res = await api.post('/reports/ai-insights');
-      setAiData(res.data);
-    } catch (err) {
-      console.error('Erro ao gerar insights:', err);
-    } finally {
-      setGeneratingAi(false);
-    }
-  };
+  // Sobras Filtradas pelo Mês e Ano Selecionados
+  const filteredSobras = useMemo(() => {
+    return rawSobras.filter((s) => {
+      const d = parseLocalDate(s.data_sobra || s.criado_em);
+      const mStr = (d.getMonth() + 1).toString().padStart(2, '0');
+      const yStr = d.getFullYear().toString();
+
+      const monthMatch = selectedMonth === 'ALL' || mStr === selectedMonth;
+      const yearMatch = selectedYear === 'ALL' || yStr === selectedYear;
+      return monthMatch && yearMatch;
+    });
+  }, [rawSobras, selectedMonth, selectedYear]);
+
+  // Recálculo Dinâmico dos Cards de Estatística
+  const stats = useMemo(() => {
+    const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0).getTime();
+    const sevenDaysAgo = todayLocal - 7 * 24 * 60 * 60 * 1000;
+
+    let desperdicioHoje = 0;
+    let desperdicioSemana = 0;
+    let desperdicioMes = 0;
+
+    filteredSobras.forEach((s) => {
+      const val = s.valor_perda || 0;
+      desperdicioMes += val;
+
+      const itemTime = parseLocalDate(s.data_sobra || s.criado_em).getTime();
+      if (itemTime === todayLocal) {
+        desperdicioHoje += val;
+      }
+      if (itemTime >= sevenDaysAgo) {
+        desperdicioSemana += val;
+      }
+    });
+
+    return {
+      desperdicioHoje,
+      desperdicioSemana,
+      desperdicioMes,
+      produtosAtivos: produtosAtivosCount,
+    };
+  }, [filteredSobras, produtosAtivosCount]);
+
+  // Recálculo do Top Produtos por Desperdício
+  const topProducts = useMemo<TopProductDonut[]>(() => {
+    const productLossMap: Record<string, { nome: string; valor: number; qtd: number; unidade: string }> = {};
+
+    filteredSobras.forEach((s: any) => {
+      const prod = productsList.find((p: any) => p.id === s.produto_id) || s.produto || { nome: 'Outros', unidade: 'kg' };
+      const pName = prod.nome || 'Outros';
+      const pUnit = prod.unidade || 'kg';
+      if (!productLossMap[pName]) {
+        productLossMap[pName] = { nome: pName, valor: 0, qtd: 0, unidade: pUnit };
+      }
+      productLossMap[pName].valor += s.valor_perda || 0;
+      productLossMap[pName].qtd += s.quantidade || 0;
+    });
+
+    const totalMes = stats.desperdicioMes;
+
+    return Object.values(productLossMap)
+      .map((item) => ({
+        nome: item.nome,
+        valor: Number(item.valor.toFixed(2)),
+        quantidade: Number(item.qtd.toFixed(2)),
+        unidade: item.unidade,
+        percentual: totalMes > 0 ? Number(((item.valor / totalMes) * 100).toFixed(1)) : 0,
+      }))
+      .sort((a, b) => b.valor - a.valor)
+      .slice(0, 6);
+  }, [filteredSobras, productsList, stats.desperdicioMes]);
 
   // Processar dados para o gráfico de histórico interativo
-  const processBarChartData = () => {
-    if (!rawSobras.length) return [];
+  const mainChartData = useMemo(() => {
+    if (!filteredSobras.length) return [];
 
     const grouped: Record<string, number> = {};
 
-    rawSobras.forEach((s) => {
+    filteredSobras.forEach((s) => {
       let key = '';
+      const d = parseLocalDate(s.data_sobra);
 
       if (period === 'dia') {
-        const d = new Date(s.data_sobra);
         key = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
       } else {
-        const d = new Date(s.data_sobra);
         const dayOfMonth = d.getDate();
         const weekNum = Math.ceil(dayOfMonth / 7);
         key = `Sem. ${weekNum}`;
@@ -115,15 +178,82 @@ export const Dashboard: React.FC = () => {
       name: k,
       valor: Number(grouped[k].toFixed(2)),
     }));
-  };
+  }, [filteredSobras, period, metric]);
 
-  const mainChartData = processBarChartData();
-
-  // Cores do gráfico Donut
   const DONUT_COLORS = ['#ea580c', '#c2410c', '#f97316', '#fb923c', '#556b2f', '#8fad72'];
+
+  const meses = [
+    { value: 'ALL', label: 'Todos os Meses' },
+    { value: '01', label: 'Janeiro' },
+    { value: '02', label: 'Fevereiro' },
+    { value: '03', label: 'Março' },
+    { value: '04', label: 'Abril' },
+    { value: '05', label: 'Maio' },
+    { value: '06', label: 'Junho' },
+    { value: '07', label: 'Julho' },
+    { value: '08', label: 'Agosto' },
+    { value: '09', label: 'Setembro' },
+    { value: '10', label: 'Outubro' },
+    { value: '11', label: 'Novembro' },
+    { value: '12', label: 'Dezembro' },
+  ];
+
+  const anos = [
+    { value: 'ALL', label: 'Todos os Anos' },
+    { value: '2026', label: '2026' },
+    { value: '2025', label: '2025' },
+    { value: '2024', label: '2024' },
+  ];
+
+  const monthLabel = selectedMonth === 'ALL' ? 'Todos os Meses' : meses.find((m) => m.value === selectedMonth)?.label;
 
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
+      {/* 0. Barra de Filtro por Mês e Ano */}
+      <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-[#f0f4e8] text-[#556b2f]">
+            <Filter className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-stone-900">Filtro de Período da Dashboard</h3>
+            <p className="text-xs text-stone-500">Selecione o mês e ano para analisar o histórico de desperdício</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-stone-600">Mês:</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-stone-50 border border-stone-200 text-stone-900 text-xs font-bold rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#556b2f]"
+            >
+              {meses.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-stone-600">Ano:</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="bg-stone-50 border border-stone-200 text-stone-900 text-xs font-bold rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#556b2f]"
+            >
+              {anos.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* 1. Cards do Topo */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
@@ -143,9 +273,9 @@ export const Dashboard: React.FC = () => {
         />
 
         <StatCard
-          title="Desperdício Mês"
+          title={`Desperdício (${monthLabel})`}
           value={`R$ ${stats.desperdicioMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          subtitle="Perda acumulada em 30 dias"
+          subtitle={selectedMonth === 'ALL' ? 'Acumulado no período' : `Perda acumulada em ${monthLabel}`}
           icon={AlertTriangle}
           variant="terracotta"
         />
@@ -161,7 +291,7 @@ export const Dashboard: React.FC = () => {
 
       {/* 2. Seção dos Gráficos em Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Gráfico 1: Histórico de Sobras (com 3 Opções de Visualização) */}
+        {/* Gráfico 1: Histórico de Sobras */}
         <div className="lg:col-span-7 bg-white rounded-2xl border border-stone-200 p-6 shadow-2xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-stone-100">
             <div>
@@ -169,9 +299,7 @@ export const Dashboard: React.FC = () => {
               <p className="text-xs text-stone-500">Acompanhe a evolução temporal das perdas por filtros</p>
             </div>
 
-            {/* Controles de Filtros e 3 Opções de Gráfico */}
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              {/* Métrica */}
               <div className="flex bg-[#fcfbf9] p-1 rounded-xl border border-stone-200">
                 <button
                   onClick={() => setMetric('valor')}
@@ -191,7 +319,6 @@ export const Dashboard: React.FC = () => {
                 </button>
               </div>
 
-              {/* Período */}
               <div className="flex bg-[#fcfbf9] p-1 rounded-xl border border-stone-200">
                 <button
                   onClick={() => setPeriod('dia')}
@@ -211,7 +338,6 @@ export const Dashboard: React.FC = () => {
                 </button>
               </div>
 
-              {/* 3 Seletores de Gráfico */}
               <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200">
                 <button
                   onClick={() => setChartTypeMain('bar')}
@@ -244,7 +370,6 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Renderização do Gráfico com 3 Estilos Alternáveis */}
           {loading ? (
             <div className="h-72 flex items-center justify-center text-stone-400 text-xs">Carregando gráfico...</div>
           ) : mainChartData.length === 0 ? (
@@ -317,16 +442,15 @@ export const Dashboard: React.FC = () => {
           )}
         </div>
 
-        {/* Gráfico 2: Top Produtos por Desperdício (Com 3 Opções de Visualização) */}
+        {/* Gráfico 2: Top Produtos por Desperdício */}
         <div className="lg:col-span-5 bg-white rounded-2xl border border-stone-200 p-6 shadow-2xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-stone-100">
               <div>
                 <h3 className="text-base font-bold text-stone-900">Top Produtos por Desperdício</h3>
-                <p className="text-xs text-stone-500">Maior impacto de perda no mês</p>
+                <p className="text-xs text-stone-500">Maior impacto de perda no período</p>
               </div>
 
-              {/* 3 Opções do Gráfico 2: Donut, Pie, Horizontal Bar */}
               <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200 text-xs">
                 <button
                   onClick={() => setChartTypeTop('donut')}
@@ -362,11 +486,10 @@ export const Dashboard: React.FC = () => {
               <div className="h-56 flex items-center justify-center text-stone-400 text-xs">Carregando dados...</div>
             ) : topProducts.length === 0 ? (
               <div className="h-56 flex items-center justify-center text-stone-400 text-xs">
-                Nenhum dado de perda disponível.
+                Nenhum dado de perda disponível para o período.
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row items-center gap-4">
-                {/* Visual Chart */}
                 <div className="w-44 h-44 shrink-0 relative">
                   <ResponsiveContainer width="100%" height="100%">
                     {chartTypeTop === 'bar' ? (
@@ -387,7 +510,7 @@ export const Dashboard: React.FC = () => {
                           paddingAngle={3}
                           dataKey="valor"
                         >
-                          {topProducts.map((entry, index) => (
+                          {topProducts.map((_, index) => (
                             <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length]} />
                           ))}
                         </Pie>
@@ -405,7 +528,6 @@ export const Dashboard: React.FC = () => {
                   </ResponsiveContainer>
                 </div>
 
-                {/* Legenda Detalhada em Lista */}
                 <div className="w-full space-y-2 max-h-48 overflow-y-auto pr-1">
                   {topProducts.map((prod, idx) => (
                     <div key={idx} className="flex items-center justify-between text-xs p-1.5 rounded-lg hover:bg-stone-50 transition-colors">
@@ -431,84 +553,6 @@ export const Dashboard: React.FC = () => {
             )}
           </div>
         </div>
-      </div>
-
-      {/* 3. Banner Inferior: Insights de IA */}
-      <div className="bg-gradient-to-r from-[#f0f4e8] via-[#f8f9f3] to-white rounded-2xl border border-[#d4e1c5] p-6 shadow-sm relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-[#556b2f] text-white flex items-center justify-center shrink-0 shadow-md">
-              <Sparkles className="w-6 h-6 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-stone-900">Insights de IA & Inteligência Operacional</h3>
-                <span className="bg-[#556b2f] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  NOVO
-                </span>
-              </div>
-              <p className="text-xs text-stone-600 mt-1 max-w-2xl">
-                Nossa IA analisa padrões de desperdício, picos de descarte por área e sugere ações corretivas imediatas para economizar no orçamento da cozinha.
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={handleGenerateAI}
-            disabled={generatingAi}
-            className="flex items-center justify-center gap-2 bg-[#556b2f] hover:bg-[#415224] text-white px-5 py-3 rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg shrink-0 disabled:opacity-60"
-          >
-            {generatingAi ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Processando IA...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                <span>Gerar Insights de IA</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Exibição dos Insights gerados */}
-        {aiData && (
-          <div className="mt-6 pt-5 border-t border-[#d4e1c5] space-y-4 animate-fadeIn">
-            <div className="p-3.5 bg-white rounded-xl border border-[#d4e1c5] text-xs text-stone-700">
-              <p className="font-semibold text-stone-900 mb-1 flex items-center gap-1.5">
-                <Info className="w-4 h-4 text-[#556b2f]" />
-                Resumo Executivo da IA:
-              </p>
-              <p className="leading-relaxed">{aiData.summary}</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {aiData.recommendations.map((rec, idx) => (
-                <div
-                  key={idx}
-                  className={`p-4 rounded-xl border text-xs bg-white ${
-                    rec.type === 'critical'
-                      ? 'border-red-200 text-red-900 bg-red-50/40'
-                      : rec.type === 'warning'
-                      ? 'border-amber-200 text-amber-900 bg-amber-50/40'
-                      : 'border-[#d4e1c5] text-stone-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 font-bold mb-1">
-                    {rec.type === 'critical' ? (
-                      <AlertTriangle className="w-4 h-4 text-red-600" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-[#556b2f]" />
-                    )}
-                    <span>{rec.title}</span>
-                  </div>
-                  <p className="text-stone-600 leading-relaxed">{rec.description}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

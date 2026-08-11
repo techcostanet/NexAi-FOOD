@@ -9,11 +9,27 @@ export interface VersionItem {
   }[];
 }
 
-export const CURRENT_VERSION = '1.7.6';
+export const CURRENT_VERSION = '1.7.7';
 export const RELEASE_DATE = '11/08/2026';
 export const DEVELOPER_BRAND = 'Tech Costa Systems';
 
 export const VERSIONS_HISTORY: VersionItem[] = [
+  {
+    version: '1.7.7',
+    date: '11/08/2026',
+    title: 'Filtros por Mês e Ano na Dashboard & Remoção de Recursos Sem Uso',
+    tag: 'Feature',
+    changes: [
+      {
+        category: 'Novas Funcionalidades',
+        description: 'Adicionada barra de seleção de Mês e Ano pré-prontos na Dashboard para consulta de históricos de desperdício de meses passados com recálculo instantâneo.',
+      },
+      {
+        category: 'Melhorias',
+        description: 'Remoção do bloco inferior de Insights de IA a pedido da gestão operacional.',
+      },
+    ],
+  },
   {
     version: '1.7.6',
     date: '11/08/2026',
