@@ -9,11 +9,23 @@ export interface VersionItem {
   }[];
 }
 
-export const CURRENT_VERSION = '1.7.5';
-export const RELEASE_DATE = '07/08/2026';
+export const CURRENT_VERSION = '1.7.6';
+export const RELEASE_DATE = '11/08/2026';
 export const DEVELOPER_BRAND = 'Tech Costa Systems';
 
 export const VERSIONS_HISTORY: VersionItem[] = [
+  {
+    version: '1.7.6',
+    date: '11/08/2026',
+    title: 'Correção de Cálculo no Dashboard e Aproveitamento',
+    tag: 'Improvement',
+    changes: [
+      {
+        category: 'Correções',
+        description: 'Correção nos indicadores de Desperdício e Aproveitamento que estavam somando todo o histórico do banco de dados em vez de filtrar corretamente por Dia, Semana (7 dias) e Mês (30 dias).',
+      },
+    ],
+  },
   {
     version: '1.7.5',
     date: '07/08/2026',

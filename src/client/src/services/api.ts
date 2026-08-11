@@ -18,6 +18,7 @@ import {
   updateFirestoreUser,
   deleteFirestoreUser,
 } from './firestoreService';
+import { parseLocalDate } from '../utils/dateUtils';
 
 const api = axios.create({
   baseURL: '/api',
@@ -99,14 +100,38 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
       getFirestoreAreas(),
     ]);
 
-    const desperdicioHoje = sobras.slice(0, 3).reduce((acc: number, item: any) => acc + (item.valor_perda || 0), 0);
-    const desperdicioSemana = sobras.slice(0, 15).reduce((acc: number, item: any) => acc + (item.valor_perda || 0), 0);
-    const desperdicioMes = sobras.reduce((acc: number, item: any) => acc + (item.valor_perda || 0), 0);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0).getTime();
+    const thirtyDaysAgo = today - 30 * 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = today - 7 * 24 * 60 * 60 * 1000;
+
+    let desperdicioHoje = 0;
+    let desperdicioSemana = 0;
+    let desperdicioMes = 0;
+    const sobrasMes: any[] = [];
+
+    sobras.forEach((item: any) => {
+      const itemDate = parseLocalDate(item.data_sobra || item.criado_em).getTime();
+      const val = item.valor_perda || 0;
+
+      if (itemDate >= thirtyDaysAgo) {
+        desperdicioMes += val;
+        sobrasMes.push(item);
+
+        if (itemDate >= sevenDaysAgo) {
+          desperdicioSemana += val;
+        }
+        if (itemDate === today) {
+          desperdicioHoje += val;
+        }
+      }
+    });
+
     const produtosAtivos = products.filter((p: any) => p.ativo).length;
 
-    // Top produtos desperdício
+    // Top produtos desperdício (últimos 30 dias)
     const productLossMap: Record<string, { nome: string; valor: number; qtd: number; unidade: string }> = {};
-    sobras.forEach((s: any) => {
+    sobrasMes.forEach((s: any) => {
       const prod = products.find((p: any) => p.id === s.produto_id) || s.produto || { nome: 'Outros', unidade: 'kg' };
       const pName = prod.nome || 'Outros';
       const pUnit = prod.unidade || 'kg';
@@ -164,8 +189,15 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
       getFirestoreProducts(),
     ]);
 
-    const totalEntradasValor = entradas.reduce((acc: number, curr: any) => acc + (curr.valor_total || 0), 0);
-    const totalSobrasValor = sobras.reduce((acc: number, curr: any) => acc + (curr.valor_perda || 0), 0);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0).getTime();
+    const thirtyDaysAgo = today - 30 * 24 * 60 * 60 * 1000;
+
+    const entradasMes = entradas.filter((e: any) => parseLocalDate(e.data_entrada || e.criado_em).getTime() >= thirtyDaysAgo);
+    const sobrasMesAprov = sobras.filter((s: any) => parseLocalDate(s.data_sobra || s.criado_em).getTime() >= thirtyDaysAgo);
+
+    const totalEntradasValor = entradasMes.reduce((acc: number, curr: any) => acc + (curr.valor_total || 0), 0);
+    const totalSobrasValor = sobrasMesAprov.reduce((acc: number, curr: any) => acc + (curr.valor_perda || 0), 0);
 
     const consumoReal = Math.max(0, totalEntradasValor - totalSobrasValor);
     const aproveitamentoMedio = totalEntradasValor > 0
@@ -185,14 +217,14 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
       };
     });
 
-    entradas.forEach((e: any) => {
+    entradasMes.forEach((e: any) => {
       if (productStatsMap[e.produto_id]) {
         productStatsMap[e.produto_id].entradaQtd += e.quantidade || 0;
         productStatsMap[e.produto_id].entradaValor += e.valor_total || 0;
       }
     });
 
-    sobras.forEach((s: any) => {
+    sobrasMesAprov.forEach((s: any) => {
       if (productStatsMap[s.produto_id]) {
         productStatsMap[s.produto_id].sobraQtd += s.quantidade || 0;
         productStatsMap[s.produto_id].sobraValor += s.valor_perda || 0;
@@ -252,7 +284,12 @@ async function handleCloudApiFallback(config: InternalAxiosRequestConfig) {
       getFirestoreProducts(),
     ]);
 
-    const totalLoss = sobras.reduce((acc, s) => acc + (s.valor_perda || 0), 0);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0).getTime();
+    const thirtyDaysAgo = today - 30 * 24 * 60 * 60 * 1000;
+    const sobrasMes = sobras.filter((s: any) => parseLocalDate(s.data_sobra || s.criado_em).getTime() >= thirtyDaysAgo);
+
+    const totalLoss = sobrasMes.reduce((acc, s) => acc + (s.valor_perda || 0), 0);
 
     return Promise.resolve({
       data: {
