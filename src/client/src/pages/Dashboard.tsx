@@ -20,7 +20,7 @@ import {
   Area,
   XAxis,
   YAxis,
-  Tooltip,
+  LabelList,
   PieChart,
   Pie,
   Cell,
@@ -152,35 +152,44 @@ export const Dashboard: React.FC = () => {
       .slice(0, 6);
   }, [filteredSobras, productsList, stats.desperdicioMes]);
 
-  // Processar dados para o gráfico de histórico interativo
+  // Processar dados para o gráfico de histórico interativo (ordenado cronologicamente: dia mais novo à direita)
   const mainChartData = useMemo(() => {
     if (!filteredSobras.length) return [];
 
-    const grouped: Record<string, number> = {};
+    const grouped: Record<string, { label: string; sortKey: number; valor: number }> = {};
 
     filteredSobras.forEach((s) => {
       let key = '';
-      const d = parseLocalDate(s.data_sobra);
+      let sortKey = 0;
+      const d = parseLocalDate(s.data_sobra || s.criado_em);
 
       if (period === 'dia') {
         key = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+        // Data mais antiga à esquerda, dia mais recente à direita
+        sortKey = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
       } else {
         const dayOfMonth = d.getDate();
         const weekNum = Math.ceil(dayOfMonth / 7);
         key = `Sem. ${weekNum}`;
+        sortKey = weekNum;
       }
 
-      const val = metric === 'valor' ? s.valor_perda : s.quantidade;
-      grouped[key] = (grouped[key] || 0) + val;
+      const val = metric === 'valor' ? (s.valor_perda || 0) : (s.quantidade || 0);
+      if (!grouped[key]) {
+        grouped[key] = { label: key, sortKey, valor: 0 };
+      }
+      grouped[key].valor += val;
     });
 
-    return Object.keys(grouped).map((k) => ({
-      name: k,
-      valor: Number(grouped[k].toFixed(2)),
-    }));
+    return Object.values(grouped)
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .map((item) => ({
+        name: item.label,
+        valor: Number(item.valor.toFixed(2)),
+      }));
   }, [filteredSobras, period, metric]);
 
-  const DONUT_COLORS = ['#ea580c', '#c2410c', '#f97316', '#fb923c', '#556b2f', '#8fad72'];
+  const DONUT_COLORS = ['#dc2626', '#b91c1c', '#ef4444', '#f87171', '#991b1b', '#e11d48'];
 
   const meses = [
     { value: 'ALL', label: 'Todos os Meses' },
@@ -380,61 +389,79 @@ export const Dashboard: React.FC = () => {
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 {chartTypeMain === 'bar' ? (
-                  <BarChart data={mainChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <BarChart data={mainChartData} margin={{ top: 25, right: 10, left: -20, bottom: 0 }}>
                     <XAxis dataKey="name" stroke="#a8a29e" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#a8a29e" fontSize={11} tickLine={false} />
-                    <Tooltip
-                      formatter={(val: number) =>
-                        metric === 'valor'
-                          ? [`R$ ${val.toFixed(2)}`, 'Perda Financeira']
-                          : [`${val} unidades/kg`, 'Quantidade Descartada']
-                      }
-                      contentStyle={{
-                        backgroundColor: '#ffffff',
-                        borderColor: '#e7e5e0',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                      }}
+                    <YAxis
+                      stroke="#a8a29e"
+                      fontSize={11}
+                      tickLine={false}
+                      domain={[0, (dataMax: number) => Math.ceil((dataMax || 10) * 1.15)]}
                     />
-                    <Bar dataKey="valor" fill="#ea580c" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                    <Bar dataKey="valor" fill="#dc2626" radius={[6, 6, 0, 0]} maxBarSize={48}>
+                      <LabelList
+                        dataKey="valor"
+                        position="top"
+                        offset={6}
+                        fill="#dc2626"
+                        fontSize={11}
+                        fontWeight="bold"
+                        formatter={(val: number) =>
+                          metric === 'valor'
+                            ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : `${val}`
+                        }
+                      />
+                    </Bar>
                   </BarChart>
                 ) : chartTypeMain === 'line' ? (
-                  <LineChart data={mainChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <LineChart data={mainChartData} margin={{ top: 25, right: 10, left: -20, bottom: 0 }}>
                     <XAxis dataKey="name" stroke="#a8a29e" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#a8a29e" fontSize={11} tickLine={false} />
-                    <Tooltip
-                      formatter={(val: number) =>
-                        metric === 'valor'
-                          ? [`R$ ${val.toFixed(2)}`, 'Perda Financeira']
-                          : [`${val} unidades/kg`, 'Quantidade Descartada']
-                      }
-                      contentStyle={{
-                        backgroundColor: '#ffffff',
-                        borderColor: '#e7e5e0',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                      }}
+                    <YAxis
+                      stroke="#a8a29e"
+                      fontSize={11}
+                      tickLine={false}
+                      domain={[0, (dataMax: number) => Math.ceil((dataMax || 10) * 1.15)]}
                     />
-                    <Line type="monotone" dataKey="valor" stroke="#ea580c" strokeWidth={3} dot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="valor" stroke="#dc2626" strokeWidth={3} dot={{ r: 5, fill: '#dc2626' }}>
+                      <LabelList
+                        dataKey="valor"
+                        position="top"
+                        offset={8}
+                        fill="#dc2626"
+                        fontSize={11}
+                        fontWeight="bold"
+                        formatter={(val: number) =>
+                          metric === 'valor'
+                            ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : `${val}`
+                        }
+                      />
+                    </Line>
                   </LineChart>
                 ) : (
-                  <AreaChart data={mainChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={mainChartData} margin={{ top: 25, right: 10, left: -20, bottom: 0 }}>
                     <XAxis dataKey="name" stroke="#a8a29e" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#a8a29e" fontSize={11} tickLine={false} />
-                    <Tooltip
-                      formatter={(val: number) =>
-                        metric === 'valor'
-                          ? [`R$ ${val.toFixed(2)}`, 'Perda Financeira']
-                          : [`${val} unidades/kg`, 'Quantidade Descartada']
-                      }
-                      contentStyle={{
-                        backgroundColor: '#ffffff',
-                        borderColor: '#e7e5e0',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                      }}
+                    <YAxis
+                      stroke="#a8a29e"
+                      fontSize={11}
+                      tickLine={false}
+                      domain={[0, (dataMax: number) => Math.ceil((dataMax || 10) * 1.15)]}
                     />
-                    <Area type="monotone" dataKey="valor" stroke="#ea580c" fill="#ea580c" fillOpacity={0.25} />
+                    <Area type="monotone" dataKey="valor" stroke="#dc2626" fill="#dc2626" fillOpacity={0.25} dot={{ r: 4, fill: '#dc2626' }}>
+                      <LabelList
+                        dataKey="valor"
+                        position="top"
+                        offset={8}
+                        fill="#dc2626"
+                        fontSize={11}
+                        fontWeight="bold"
+                        formatter={(val: number) =>
+                          metric === 'valor'
+                            ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : `${val}`
+                        }
+                      />
+                    </Area>
                   </AreaChart>
                 )}
               </ResponsiveContainer>
@@ -493,11 +520,20 @@ export const Dashboard: React.FC = () => {
                 <div className="w-44 h-44 shrink-0 relative">
                   <ResponsiveContainer width="100%" height="100%">
                     {chartTypeTop === 'bar' ? (
-                      <BarChart layout="vertical" data={topProducts} margin={{ top: 5, right: 5, left: -25, bottom: 5 }}>
+                      <BarChart layout="vertical" data={topProducts} margin={{ top: 5, right: 55, left: -25, bottom: 5 }}>
                         <XAxis type="number" hide />
                         <YAxis type="category" dataKey="nome" stroke="#a8a29e" fontSize={10} tickLine={false} width={70} />
-                        <Tooltip formatter={(val: number) => [`R$ ${val.toFixed(2)}`, 'Perda']} />
-                        <Bar dataKey="valor" fill="#ea580c" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="valor" fill="#dc2626" radius={[0, 4, 4, 0]}>
+                          <LabelList
+                            dataKey="valor"
+                            position="right"
+                            offset={6}
+                            fill="#dc2626"
+                            fontSize={10}
+                            fontWeight="bold"
+                            formatter={(val: number) => `R$ ${Number(val).toFixed(2)}`}
+                          />
+                        </Bar>
                       </BarChart>
                     ) : (
                       <PieChart>
@@ -514,15 +550,6 @@ export const Dashboard: React.FC = () => {
                             <Cell key={`cell-${index}`} fill={DONUT_COLORS[index % DONUT_COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip
-                          formatter={(val: number) => [`R$ ${val.toFixed(2)}`, 'Perda']}
-                          contentStyle={{
-                            backgroundColor: '#ffffff',
-                            borderColor: '#e7e5e0',
-                            borderRadius: '8px',
-                            fontSize: '11px',
-                          }}
-                        />
                       </PieChart>
                     )}
                   </ResponsiveContainer>

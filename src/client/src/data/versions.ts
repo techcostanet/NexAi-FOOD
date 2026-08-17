@@ -9,11 +9,35 @@ export interface VersionItem {
   }[];
 }
 
-export const CURRENT_VERSION = '1.7.7';
-export const RELEASE_DATE = '11/08/2026';
+export const CURRENT_VERSION = '1.7.8';
+export const RELEASE_DATE = '17/08/2026';
 export const DEVELOPER_BRAND = 'Tech Costa Systems';
 
 export const VERSIONS_HISTORY: VersionItem[] = [
+  {
+    version: '1.7.8',
+    date: '17/08/2026',
+    title: 'Rótulos Diretos nos Gráficos, Remoção de Tooltip, Cores Vermelhas e Ordenação Cronológica',
+    tag: 'Improvement',
+    changes: [
+      {
+        category: 'Novas Funcionalidades',
+        description: 'Exibição de valores diretamente sobre cada barra, ponto e área em todos os gráficos (Dashboard e Aproveitamento).',
+      },
+      {
+        category: 'Melhorias',
+        description: 'Remoção do balão flutuante (tooltip) que segue o mouse para uma interface mais limpa e leitura instantânea.',
+      },
+      {
+        category: 'Melhorias',
+        description: 'Atualização da cor de sobras/desperdício de laranja para vermelho nos gráficos para padrão visual imediato de perda.',
+      },
+      {
+        category: 'Correções',
+        description: 'Inversão da sequência de dias no gráfico de histórico de sobras para ordem cronológica crescente (dia mais recente posicionado à direita).',
+      },
+    ],
+  },
   {
     version: '1.7.7',
     date: '11/08/2026',

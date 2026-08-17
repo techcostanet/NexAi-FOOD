@@ -20,7 +20,7 @@ import {
   Area,
   XAxis,
   YAxis,
-  Tooltip,
+  LabelList,
   Legend,
 } from 'recharts';
 import api from '../services/api';
@@ -361,7 +361,7 @@ export const Aproveitamento: React.FC = () => {
           <div>
             <h3 className="text-base font-bold text-stone-900">Comparativo Temporal: Entradas vs Sobras</h3>
             <p className="text-xs text-stone-500">
-              Verde = Entradas (Investimento) | Laranja = Sobras (Desperdício)
+              Verde = Entradas (Investimento) | Vermelho = Sobras (Desperdício)
             </p>
           </div>
 
@@ -410,64 +410,124 @@ export const Aproveitamento: React.FC = () => {
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               {chartType === 'bar' ? (
-                <BarChart data={groupedChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <BarChart data={groupedChartData} margin={{ top: 25, right: 10, left: -20, bottom: 0 }}>
                   <XAxis dataKey="semana" stroke="#a8a29e" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#a8a29e" fontSize={11} tickLine={false} />
-                  <Tooltip
-                    formatter={(val: number) => [`R$ ${val.toFixed(2)}`, '']}
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#e7e5e0',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                    }}
+                  <YAxis
+                    stroke="#a8a29e"
+                    fontSize={11}
+                    tickLine={false}
+                    domain={[0, (dataMax: number) => Math.ceil((dataMax || 10) * 1.15)]}
                   />
                   <Legend
                     formatter={(value) => (value === 'entrada' ? 'Entrada (Insumo)' : 'Sobra (Desperdício)')}
                     wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }}
                   />
-                  <Bar dataKey="entrada" fill="#556b2f" name="entrada" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                  <Bar dataKey="sobra" fill="#ea580c" name="sobra" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  <Bar dataKey="entrada" fill="#556b2f" name="entrada" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                    <LabelList
+                      dataKey="entrada"
+                      position="top"
+                      offset={6}
+                      fill="#556b2f"
+                      fontSize={10}
+                      fontWeight="bold"
+                      formatter={(val: number) =>
+                        val > 0 ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''
+                      }
+                    />
+                  </Bar>
+                  <Bar dataKey="sobra" fill="#dc2626" name="sobra" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                    <LabelList
+                      dataKey="sobra"
+                      position="top"
+                      offset={6}
+                      fill="#dc2626"
+                      fontSize={10}
+                      fontWeight="bold"
+                      formatter={(val: number) =>
+                        val > 0 ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''
+                      }
+                    />
+                  </Bar>
                 </BarChart>
               ) : chartType === 'line' ? (
-                <LineChart data={groupedChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <LineChart data={groupedChartData} margin={{ top: 25, right: 10, left: -20, bottom: 0 }}>
                   <XAxis dataKey="semana" stroke="#a8a29e" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#a8a29e" fontSize={11} tickLine={false} />
-                  <Tooltip
-                    formatter={(val: number) => [`R$ ${val.toFixed(2)}`, '']}
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#e7e5e0',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                    }}
+                  <YAxis
+                    stroke="#a8a29e"
+                    fontSize={11}
+                    tickLine={false}
+                    domain={[0, (dataMax: number) => Math.ceil((dataMax || 10) * 1.15)]}
                   />
                   <Legend
                     formatter={(value) => (value === 'entrada' ? 'Entrada (Insumo)' : 'Sobra (Desperdício)')}
                     wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }}
                   />
-                  <Line type="monotone" dataKey="entrada" stroke="#556b2f" strokeWidth={3} dot={{ r: 5 }} name="entrada" />
-                  <Line type="monotone" dataKey="sobra" stroke="#ea580c" strokeWidth={3} dot={{ r: 5 }} name="sobra" />
+                  <Line type="monotone" dataKey="entrada" stroke="#556b2f" strokeWidth={3} dot={{ r: 5, fill: '#556b2f' }} name="entrada">
+                    <LabelList
+                      dataKey="entrada"
+                      position="top"
+                      offset={8}
+                      fill="#556b2f"
+                      fontSize={10}
+                      fontWeight="bold"
+                      formatter={(val: number) =>
+                        val > 0 ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''
+                      }
+                    />
+                  </Line>
+                  <Line type="monotone" dataKey="sobra" stroke="#dc2626" strokeWidth={3} dot={{ r: 5, fill: '#dc2626' }} name="sobra">
+                    <LabelList
+                      dataKey="sobra"
+                      position="top"
+                      offset={8}
+                      fill="#dc2626"
+                      fontSize={10}
+                      fontWeight="bold"
+                      formatter={(val: number) =>
+                        val > 0 ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''
+                      }
+                    />
+                  </Line>
                 </LineChart>
               ) : (
-                <AreaChart data={groupedChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={groupedChartData} margin={{ top: 25, right: 10, left: -20, bottom: 0 }}>
                   <XAxis dataKey="semana" stroke="#a8a29e" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#a8a29e" fontSize={11} tickLine={false} />
-                  <Tooltip
-                    formatter={(val: number) => [`R$ ${val.toFixed(2)}`, '']}
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#e7e5e0',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                    }}
+                  <YAxis
+                    stroke="#a8a29e"
+                    fontSize={11}
+                    tickLine={false}
+                    domain={[0, (dataMax: number) => Math.ceil((dataMax || 10) * 1.15)]}
                   />
                   <Legend
                     formatter={(value) => (value === 'entrada' ? 'Entrada (Insumo)' : 'Sobra (Desperdício)')}
                     wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }}
                   />
-                  <Area type="monotone" dataKey="entrada" stroke="#556b2f" fill="#556b2f" fillOpacity={0.25} name="entrada" />
-                  <Area type="monotone" dataKey="sobra" stroke="#ea580c" fill="#ea580c" fillOpacity={0.25} name="sobra" />
+                  <Area type="monotone" dataKey="entrada" stroke="#556b2f" fill="#556b2f" fillOpacity={0.25} dot={{ r: 4, fill: '#556b2f' }} name="entrada">
+                    <LabelList
+                      dataKey="entrada"
+                      position="top"
+                      offset={8}
+                      fill="#556b2f"
+                      fontSize={10}
+                      fontWeight="bold"
+                      formatter={(val: number) =>
+                        val > 0 ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''
+                      }
+                    />
+                  </Area>
+                  <Area type="monotone" dataKey="sobra" stroke="#dc2626" fill="#dc2626" fillOpacity={0.25} dot={{ r: 4, fill: '#dc2626' }} name="sobra">
+                    <LabelList
+                      dataKey="sobra"
+                      position="top"
+                      offset={8}
+                      fill="#dc2626"
+                      fontSize={10}
+                      fontWeight="bold"
+                      formatter={(val: number) =>
+                        val > 0 ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''
+                      }
+                    />
+                  </Area>
                 </AreaChart>
               )}
             </ResponsiveContainer>
